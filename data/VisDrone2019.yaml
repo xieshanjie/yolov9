@@ -1,0 +1,20 @@
+path: /home/user/xsj/my_dataset/VisDrone2019  # dataset root dir  这里给出数据集的根目录
+train: VisDrone2019-DET-train/images  # train images (relative to 'path')  6471 images 训练数据集的路径
+val: VisDrone2019-DET-val/images  # val images (relative to 'path')  548 images  验证数据集的路径
+test: VisDrone2019-DET-test-dev/images  # test images (optional)  1610 images  测试数据集的路径
+
+# Number of Classes
+nc: 10
+# Classes
+names: [
+    'pedestrian',
+    'people',
+    'bicycle',
+    'car',
+    'van',
+    'truck',
+    'tricycle',
+    'awning-tricycle',
+    'bus',
+    'motor'
+]
