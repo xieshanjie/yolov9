@@ -25,6 +25,9 @@ from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
 
 
+from utils.general import PP
+
+
 def save_one_txt(predn, save_conf, shape, file):
     # Save one txt result
     gn = torch.tensor(shape)[[1, 0, 1, 0]]  # normalization gain whwh
@@ -176,6 +179,12 @@ def run(
     jdict, stats, ap, ap_class = [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
+    
+    list_sum = []
+    sum_pixel = imgsz*imgsz
+    small_box = 0
+    sum_box = 0
+    
     for batch_i, (im, targets, paths, shapes) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
         with dt[0]:
@@ -209,7 +218,9 @@ def run(
                                         multi_label=True,
                                         agnostic=single_cls,
                                         max_det=max_det)
-
+        # PP(len(preds))
+        list_batch = []
+        
         # Metrics
         for si, pred in enumerate(preds):
             labels = targets[targets[:, 0] == si, 1:]
@@ -230,6 +241,17 @@ def run(
                 pred[:, 5] = 0
             predn = pred.clone()
             scale_boxes(im[si].shape[1:], predn[:, :4], shape, shapes[si][1])  # native-space pred
+    
+            # calculate bbox proportion
+            # predn (array[N, 6]), x1, y1, x2, y2, conf, class
+            list_si = []
+            for row in predn:
+                bbox_size = ((row[2]-row[0])*(row[3]-row[1])).item()
+                if bbox_size <= 100:
+                    small_box += 1
+                sum_box += 1
+                list_si.append((bbox_size, bbox_size/sum_pixel))
+            list_batch.append((predn.shape[0], list_si))
 
             # Evaluate
             if nl:
@@ -248,12 +270,26 @@ def run(
                 save_one_json(predn, jdict, path, class_map)  # append to COCO-JSON dictionary
             callbacks.run('on_val_image_end', pred, predn, path, names, im[si])
 
+        list_sum.append(list_batch)
+        # calculate bbox proportion
+        # PP(type(predn))
+        # PP(len(stats[0]))
+        
         # Plot images
         if plots and batch_i < 3:
             plot_images(im, targets, paths, save_dir / f'val_batch{batch_i}_labels.jpg', names)  # labels
             plot_images(im, output_to_target(preds), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
 
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds)
+
+    output_file = name + "_Bbox_proportion_result.txt"
+    with open(output_file, "w") as file:
+        file.write(str(small_box) + "/" + str(sum_box) + "\n")
+        for sum_result in list_sum:
+            file.write(str(sum_result) + "\n")
+    # PP(len(list_sum))
+    # PP(len(list_sum[0]))
+    # PP(len(list_sum[0][0]))
 
     # Compute metrics
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
