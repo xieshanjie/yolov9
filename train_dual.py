@@ -50,6 +50,17 @@ RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 GIT_INFO = None#check_git_info()
 
+import inspect, re
+
+def PP(p):
+  for line in inspect.getframeinfo(inspect.currentframe().f_back)[3]:
+    m = re.search(r'\bPP\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)', line)
+    var_name = "NOT FOUND VAR NAME"
+    if m:
+       var_name = m.group(1)
+    print(f'\033[1;33;46m {var_name} = [{p}] \033[0m')        
+
+
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
     save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze = \
@@ -69,32 +80,41 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     LOGGER.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
     hyp['anchor_t'] = 5.0
     opt.hyp = hyp.copy()  # for saving hyps to checkpoints
+    print('\033[1;33;46m again \033[0m')        
+    LOGGER.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
+
 
     # Save run settings
     if not evolve:
         yaml_save(save_dir / 'hyp.yaml', hyp)
         yaml_save(save_dir / 'opt.yaml', vars(opt))
+    
+    print(f'\033[1;33;46m 1111 \033[0m')        
 
     # Loggers
     data_dict = None
     if RANK in {-1, 0}:
         loggers = Loggers(save_dir, weights, opt, hyp, LOGGER)  # loggers instance
+        print(f'\033[1;33;46m 3333 \033[0m')        
 
         # Register actions
         for k in methods(loggers):
             callbacks.register_action(k, callback=getattr(loggers, k))
-
+        
+        print(f'\033[1;33;46m 4444 \033[0m')        
         # Process custom dataset artifact link
         data_dict = loggers.remote_dataset
         if resume:  # If resuming runs from remote artifact
             weights, epochs, hyp, batch_size = opt.weights, opt.epochs, opt.hyp, opt.batch_size
-
+    print(f'\033[1;33;46m 2222 \033[0m')        
     # Config
     plots = not evolve and not opt.noplots  # create plots
     cuda = device.type != 'cpu'
     init_seeds(opt.seed + 1 + RANK, deterministic=True)
+    print(f'\033[1;33;46m data_dict = [{data_dict}] \033[0m')        
     with torch_distributed_zero_first(LOCAL_RANK):
         data_dict = data_dict or check_dataset(data)  # check if None
+    print(f'\033[1;33;46m data_dict = [{data_dict}] \033[0m')        
     train_path, val_path = data_dict['train'], data_dict['val']
     nc = 1 if single_cls else int(data_dict['nc'])  # number of classes
     names = {0: 'item'} if single_cls and len(data_dict['names']) != 1 else data_dict['names']  # class names
@@ -110,8 +130,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
         model = Model(cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
         exclude = ['anchor'] if (cfg or hyp.get('anchors')) and not resume else []  # exclude keys
+        PP(exclude)     
         csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
+        PP(type(csd))
         csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
+        PP(type(csd))
         model.load_state_dict(csd, strict=False)  # load
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
     else:
@@ -120,6 +143,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
+    PP(freeze)
     for k, v in model.named_parameters():
         # v.requires_grad = True  # train all layers TODO: uncomment this line as in master
         # v.register_hook(lambda x: torch.nan_to_num(x))  # NaN to 0 (commented for erratic training results)
@@ -129,20 +153,21 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # Image size
     gs = max(int(model.stride.max()), 32)  # grid size (max stride)
+    PP(gs)
     imgsz = check_img_size(opt.imgsz, gs, floor=gs * 2)  # verify imgsz is gs-multiple
-
+    PP(imgsz)
     # Batch size
     if RANK == -1 and batch_size == -1:  # single-GPU only, estimate best batch size
         batch_size = check_train_batch_size(model, imgsz, amp)
         loggers.on_params_update({"batch_size": batch_size})
-
+    PP(batch_size)
     # Optimizer
     nbs = 64  # nominal batch size
     accumulate = max(round(nbs / batch_size), 1)  # accumulate loss before optimizing
     hyp['weight_decay'] *= batch_size * accumulate / nbs  # scale weight_decay
     optimizer = smart_optimizer(model, opt.optimizer, hyp['lr0'], hyp['momentum'], hyp['weight_decay'])
-
-    # Scheduler
+    PP(optimizer)
+    # Scheduler  learning rate decide
     if opt.cos_lr:
         lf = one_cycle(1, hyp['lrf'], epochs)  # cosine 1->hyp['lrf']
     elif opt.flat_cos_lr:
@@ -164,7 +189,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
     # from utils.plots import plot_lr_scheduler; plot_lr_scheduler(optimizer, scheduler, epochs)
 
-    # EMA
+    # EMA EMA 在训练神经网络时常用于平滑模型的参数更新过程，尤其在使用低精度训练或者异步训练时，可以帮助提升模型的泛化性能。
     ema = ModelEMA(model) if RANK in {-1, 0} else None
 
     # Resume
@@ -183,7 +208,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if opt.sync_bn and cuda and RANK != -1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
         LOGGER.info('Using SyncBatchNorm()')
-
+    print("="*100)
     # Trainloader
     train_loader, dataset = create_dataloader(train_path,
                                               imgsz,
@@ -203,7 +228,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               shuffle=True,
                                               min_items=opt.min_items)
     labels = np.concatenate(dataset.labels, 0)
+    PP(type(labels))
+    PP(labels.shape)
     mlc = int(labels[:, 0].max())  # max label class
+    PP(mlc)
+    PP(labels[0])
     assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
 
     # Process 0
@@ -242,7 +271,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
     model.names = names
-
+    PP(nc)
+    PP(hyp)
+    PP(model.class_weights)
+    PP(names)
     # Start training
     t0 = time.time()
     nb = len(train_loader)  # number of batches
@@ -312,6 +344,37 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
+                # PP(type(pred))
+                # PP(type(targets))
+                # PP(pred[0][0].shape)
+                # PP(pred[0][1].shape)
+                # PP(pred[0][2].shape)
+                # PP(pred[1][0].shape)
+                # PP(pred[1][1].shape)
+                # PP(pred[1][2].shape)
+                # if isinstance(pred, tuple):
+                #     print("!"*100)
+                # NOT FOUND VAR NAME = [<class 'list'>]                
+                # NOT FOUND VAR NAME = [<class 'torch.Tensor'>]
+                # NOT FOUND VAR NAME = [torch.Size([4, 144, 40, 40])] 因为辅助单元的设计 有两组头
+                # NOT FOUND VAR NAME = [torch.Size([4, 144, 20, 20])]
+                # NOT FOUND VAR NAME = [torch.Size([4, 144, 10, 10])]
+                # NOT FOUND VAR NAME = [torch.Size([4, 144, 40, 40])]
+                # NOT FOUND VAR NAME = [torch.Size([4, 144, 20, 20])]
+                # NOT FOUND VAR NAME = [torch.Size([4, 144, 10, 10])]
+
+                # PP(targets.shape)
+                # PP(type(targets))
+                #  NOT FOUND VAR NAME = [torch.Size([42, 6])]  42个长度为6的label
+                #  NOT FOUND VAR NAME = [<class 'torch.Tensor'>]
+                # PP(targets[0])
+                # tensor([ 0.00000, 74.00000,  0.51518,  0.15024,  0.21480,  0.23665]) 6维度 第二个数是类别 后四个是坐标，第一个数好像是后面哪里添加的 目的待定
+                
+
+                # compute_loss-->return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+                # compute_loss中最后计算的 lbox、lobj、lcls是一个平均batch的各项loss（具体而言就是用BCE去计算的），因此(lbox + lobj + lcls) * bs看做是一个batch的数据的总loss。
+                # loss是一个batch的数据的总loss(loss=[(lbox + lobj + lcls) * bs])，loss_items是一个平均batch的各项loss(loss=[位置损失，置信度损失，类别损失])。
+
                 loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
@@ -455,9 +518,9 @@ def parse_opt(known=False):
     parser.add_argument('--evolve', type=int, nargs='?', const=300, help='evolve hyperparameters for x generations')
     parser.add_argument('--bucket', type=str, default='', help='gsutil bucket')
     parser.add_argument('--cache', type=str, nargs='?', const='ram', help='image --cache ram/disk')
-    parser.add_argument('--image-weights', action='store_true', help='use weighted image selection for training')
+    parser.add_argument('--image-weights', action='store_true', help='use weighted image selection for training') #是否启用加权图像策略，默认是不开启的；主要是为了解决样本不平衡问题；开启后会对于上一轮训练效果不好的图片，在下一轮中增加一些权重；
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--multi-scale', action='store_true', help='vary img-size +/- 50%%')
+    parser.add_argument('--multi-scale', action='store_true', help='vary img-size +/- 50%%') # 多尺度训练是指设置几种不同的图片输入尺度，训练时每隔一定iterations随机选取一种尺度训练，这样训练出来的模型鲁棒性更强。 对物体大小具有鲁棒性 但是我是针对小目标的 鲁棒性其实还好
     parser.add_argument('--single-cls', action='store_true', help='train multi-class data as single-class')
     parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW', 'LION'], default='SGD', help='optimizer')
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
@@ -490,7 +553,9 @@ def parse_opt(known=False):
 def main(opt, callbacks=Callbacks()):
     # Checks
     if RANK in {-1, 0}:
+        print("start to print!!!!!")
         print_args(vars(opt))
+        print("print end!!!!!")
         #check_git_status()
         #check_requirements()
 
@@ -535,8 +600,9 @@ def main(opt, callbacks=Callbacks()):
 
     # Train
     if not opt.evolve:
+        print('\033[1;33;46m start to train!!!!! \033[0m')
         train(opt.hyp, opt, device, callbacks)
-
+        print('\033[1;33;46m train end!!!!! \033[0m')        
     # Evolve hyperparameters (optional)
     else:
         # Hyperparameter evolution metadata (mutation scale 0-1, lower_limit, upper_limit)
