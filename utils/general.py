@@ -1133,3 +1133,14 @@ def imshow(path, im):
 cv2.imread, cv2.imwrite, cv2.imshow = imread, imwrite, imshow  # redefine
 
 # Variables ------------------------------------------------------------------------------------------------------------
+
+
+import inspect, re
+
+def PP(p):
+  for line in inspect.getframeinfo(inspect.currentframe().f_back)[3]:
+    m = re.search(r'\bPP\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)', line)
+    var_name = "NOT FOUND VAR NAME"
+    if m:
+       var_name = m.group(1)
+    print(f'\033[1;33;46m {var_name} = [{p}] \033[0m')        

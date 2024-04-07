@@ -67,7 +67,9 @@ class BboxLoss(nn.Module):
 
     def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
         # iou loss
+        # https://zhuanlan.zhihu.com/p/86763381
         bbox_mask = fg_mask.unsqueeze(-1).repeat([1, 1, 4])  # (b, h*w, 4)
+        # https://blog.csdn.net/m0_46483236/article/details/115263417
         pred_bboxes_pos = torch.masked_select(pred_bboxes, bbox_mask).view(-1, 4)
         target_bboxes_pos = torch.masked_select(target_bboxes, bbox_mask).view(-1, 4)
         bbox_weight = torch.masked_select(target_scores.sum(-1), fg_mask).unsqueeze(-1)
@@ -170,7 +172,7 @@ class ComputeLoss:
     def __call__(self, p, targets, img=None, epoch=0):
         loss = torch.zeros(3, device=self.device)  # box, cls, dfl
         feats = p[1][0] if isinstance(p, tuple) else p[0]
-        feats2 = p[1][1] if isinstance(p, tuple) else p[1]
+        feats2 = p[1][1] if isinstance(p, tuple) else p[1] # p[0] is a list containing 3 detect head like [4, 144, 20, 20]
         
         pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
             (self.reg_max * 4, self.nc), 1)
