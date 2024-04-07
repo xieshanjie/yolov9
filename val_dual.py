@@ -284,7 +284,7 @@ def run(
 
     output_file = name + "_Bbox_proportion_result.txt"
     with open(output_file, "w") as file:
-        file.write(str(small_box) + "/" + str(sum_box) + "\n")
+        file.write(str(small_box) + "/" + str(sum_box) + "=" + str(small_box/sum_box) + "\n")
         for sum_result in list_sum:
             file.write(str(sum_result) + "\n")
     # PP(len(list_sum))
