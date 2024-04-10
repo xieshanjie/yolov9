@@ -238,9 +238,11 @@ def run(
             # [2] calculate bbox proportion
             # predn (array[N, 6]), x1, y1, x2, y2, conf, class
             list_si = []
+            correct_class = labels[:, 0:1] == predn[:, 5]
+            x = torch.where(correct_class)
             for i, row in predn:
                 # if correct_class = labels[:, 0:1] == detections[:, 5]
-                if labels[i, 0] == row[5]:
+                if i in x[1]:
                     bbox_size = ((row[2]-row[0])*(row[3]-row[1])).item()
                     if bbox_size <= 100:
                         small_box += 1
